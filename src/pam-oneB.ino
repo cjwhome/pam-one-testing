@@ -5,7 +5,7 @@
 #include "LMP91000.h"
 #include "Serial4/Serial4.h"
 #include "Serial5/Serial5.h"
-#include "gps.h"
+#include "../lib/GPS/src/gps.h"
 #include "inttypes.h"
 #include "Particle.h"
 #include "PowerCheck.h"
@@ -25,6 +25,9 @@
 #include "Sensors/TPHFusion/TPHFusion.h"
 #include "Sensors/Plantower/Plantower.h"
 #include "Sensors/PAMCO/PAMCO.h"
+
+// THIS IS SO WE GET A LARGER SERIAL BUFFER
+#include "SerialBufferRK.h"
 
 GoogleMapsDeviceLocator locator;
 
@@ -120,7 +123,7 @@ SYSTEM_THREAD(ENABLED);
 // PAM Sensors
 T6713 t6713;
 TPHFusion tph_fusion(0x27, false);
-Plantower plantower(Serial4);
+//Plantower plantower(Serial4);
 PAMCO pamco(ADS1115_1_ADDR, LMP91000_1_EN);
 
 
@@ -187,6 +190,9 @@ float PM25_sum = 0;
 float PM10_sum = 0;
 int measurement_count = 0;
 double sound_average;
+double measurement_number = 0;
+
+SerialBuffer<4096> serBuf(Serial4); // This is how we setup getting a bigger buffer for Serial4
 
 
 //calibration parameters
@@ -351,7 +357,7 @@ void outputToCloud(String data){
 
         measurement_count = 0;
         // String webhook_data = String(DEVICE_id) + ",VOC: " + String(bme.gas_resistance / 1000.0, 1) + ", CO: " + CO_sum + ", CO2: " + CO2_sum + ", PM1: " + PM01Value + ",PM2.5: " + corrected_PM_25 + ", PM10: " + PM10Value + ",Temp: " + String(readTemperature(), 1) + ",Press: ";
-        String webhook_data = String(DEVICE_id) + ",VOC: " + String(tph_fusion.voc->adj_value, 1) + ", CO: " + CO_sum + ", CO2: " + CO2_sum + ", PM1: " + plantower.pm1.adj_value + ",PM2.5: " + plantower.pm2_5.adj_value + ", PM10: " + plantower.pm10.adj_value + ",Temp: " + String(readTemperature(), 1) + ",Press: ";
+        //String webhook_data = String(DEVICE_id) + ",VOC: " + String(tph_fusion.voc->adj_value, 1) + ", CO: " + CO_sum + ", CO2: " + CO2_sum + ", PM1: " + plantower.pm1.adj_value + ",PM2.5: " + plantower.pm2_5.adj_value + ", PM10: " + plantower.pm10.adj_value + ",Temp: " + String(readTemperature(), 1) + ",Press: ";
         // webhook_data += String(bme.pressure / 100.0, 1) + ",HUM: " + String(bme.humidity, 1) + ",Snd: " + String(sound_average) + ",O3: " + O3_sum + "\n\r";
         webhook_data += String(tph_fusion.pressure->adj_value, 1) + ",HUM: " + String(tph_fusion.humidity->adj_value, 1) + ",Snd: " + String(sound_average) + ",O3: " + O3_sum + "\n\r";
 
@@ -440,15 +446,15 @@ void readStoredVars(void){
     EEPROM.get(CO_SLOPE_MEM_ADDRESS, tempValue);
     pamco.co.slope = tempValue;
     pamco.co.slope /= 100;
-    EEPROM.get(PM_1_SLOPE_MEM_ADDRESS, tempValue);
-    plantower.pm1.slope = tempValue;
-    plantower.pm1.slope /= 100;
-    EEPROM.get(PM_25_SLOPE_MEM_ADDRESS, tempValue);
-    plantower.pm2_5.slope = tempValue;
-    plantower.pm2_5.slope /= 100;
-    EEPROM.get(PM_10_SLOPE_MEM_ADDRESS, tempValue);
-    plantower.pm10.slope = tempValue;
-    plantower.pm10.slope /= 100;
+    // EEPROM.get(PM_1_SLOPE_MEM_ADDRESS, tempValue);
+    // plantower.pm1.slope = tempValue;
+    // plantower.pm1.slope /= 100;
+    // EEPROM.get(PM_25_SLOPE_MEM_ADDRESS, tempValue);
+    // plantower.pm2_5.slope = tempValue;
+    // plantower.pm2_5.slope /= 100;
+    // EEPROM.get(PM_10_SLOPE_MEM_ADDRESS, tempValue);
+    // plantower.pm10.slope = tempValue;
+    // plantower.pm10.slope /= 100;
     EEPROM.get(TEMP_SLOPE_MEM_ADDRESS, tempValue);  //temperature
     tph_fusion.temperature->slope = tempValue;
     tph_fusion.temperature->slope /= 100;
@@ -461,9 +467,9 @@ void readStoredVars(void){
 
     EEPROM.get(CO2_ZERO_MEM_ADDRESS, t6713.CO2.zero);
     EEPROM.get(CO_ZERO_MEM_ADDRESS, pamco.co.zero);
-    EEPROM.get(PM_1_ZERO_MEM_ADDRESS, plantower.pm1.zero);
-    EEPROM.get(PM_25_ZERO_MEM_ADDRESS, plantower.pm2_5.zero);
-    EEPROM.get(PM_10_ZERO_MEM_ADDRESS, plantower.pm10.zero);
+    // EEPROM.get(PM_1_ZERO_MEM_ADDRESS, plantower.pm1.zero);
+    // EEPROM.get(PM_25_ZERO_MEM_ADDRESS, plantower.pm2_5.zero);
+    // EEPROM.get(PM_10_ZERO_MEM_ADDRESS, plantower.pm10.zero);
     EEPROM.get(TEMP_ZERO_MEM_ADDRESS, tph_fusion.temperature->zero);
     EEPROM.get(PRESSURE_ZERO_MEM_ADDRESS, tph_fusion.pressure->zero);
     EEPROM.get(RH_ZERO_MEM_ADDRESS, tph_fusion.humidity->zero);
@@ -506,18 +512,18 @@ void readStoredVars(void){
     {
         pamco.co.slope = 1;
     }
-    if(!plantower.pm1.slope)
-    {
-        plantower.pm1.slope = 1;
-    }
-    if(!plantower.pm2_5.slope)
-    {
-        plantower.pm2_5.slope = 1;
-    }
-    if(!plantower.pm10.slope)
-    {
-        plantower.pm10.slope = 1;
-    }
+    // if(!plantower.pm1.slope)
+    // {
+    //     plantower.pm1.slope = 1;
+    // }
+    // if(!plantower.pm2_5.slope)
+    // {
+    //     plantower.pm2_5.slope = 1;
+    // }
+    // if(!plantower.pm10.slope)
+    // {
+    //     plantower.pm10.slope = 1;
+    // }
 }
 
 void writeDefaultSettings(void){
@@ -656,7 +662,7 @@ void setup()
     setADCSampleTime(ADC_SampleTime_480Cycles);
     //setup i/o
     pinMode(FIVE_VOLT_EN, OUTPUT);
-    pinMode(PLANTOWER_EN, OUTPUT);
+    //pinMode(PLANTOWER_EN, OUTPUT);
     pinMode(POWER_LED_EN, OUTPUT);
     pinMode(ESP_WROOM_EN, OUTPUT);
     pinMode(BLOWER_EN, OUTPUT);
@@ -688,7 +694,7 @@ void setup()
     }
 
     digitalWrite(POWER_LED_EN, HIGH);
-    digitalWrite(PLANTOWER_EN, HIGH);
+    //digitalWrite(PLANTOWER_EN, HIGH);
     digitalWrite(ESP_WROOM_EN, HIGH);
     digitalWrite(BLOWER_EN, HIGH);
     digitalWrite(CO2_EN, HIGH);
@@ -788,7 +794,7 @@ void setup()
     PAMSensorManager *manager = PAMSensorManager::GetInstance();
     manager->addSensor(&t6713);
     manager->addSensor(&tph_fusion);
-    manager->addSensor(&plantower);
+    //manager->addSensor(&plantower);
     manager->addSensor(&pamco);
     serial_menu.addResponder(PAMSensorManager::GetInstance()->serial_menu_rd, "Sensor Settings");
 
@@ -1401,14 +1407,14 @@ void outputCOtoPI(void)
 
     if (gps.get_longitude() != 0)
     {
-        CO_string += String(gps.get_horizontalDilution() / 10.0) + ",";
+        CO_string += String(gps.get_horizontalDillution() / 10.0) + ",";
     }
     else
     {
         CO_string += String(geolocation_accuracy) + ",";
     }
 
-    CO_string += String(Time.format(systemTime, "%d/%m/%y,%H:%M:%S"));
+    CO_string += String(Time.format(Time.now(), "%d/%m/%y,%H:%M:%S"));
     //get a current time string
 
     CO_string += "\n\r&";
@@ -1932,19 +1938,21 @@ void outputParticles(){
             if(i == 0){
                 ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = BATTERY_PACKET_CONSTANT;
                 floatBytes.myFloat = fuel.getSoC();
-            }else if(i == 1){
-                ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM1_PACKET_CONSTANT;
-                // floatBytes.myFloat = PM01Value;
-                floatBytes.myFloat = plantower.pm1.adj_value;
-            }else if(i == 2){
-                ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM2PT5_PACKET_CONSTANT;
-                // floatBytes.myFloat = corrected_PM_25;
-                floatBytes.myFloat = plantower.pm2_5.adj_value;
-            }else if(i == 3){
-                ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM10_PACKET_CONSTANT;
-                // floatBytes.myFloat = PM10Value;
-                floatBytes.myFloat = plantower.pm10.adj_value;
-            }else if(i == 4){
+            }
+            // else if(i == 1){
+            //     ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM1_PACKET_CONSTANT;
+            //     // floatBytes.myFloat = PM01Value;
+            //     floatBytes.myFloat = plantower.pm1.adj_value;
+            // }else if(i == 2){
+            //     ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM2PT5_PACKET_CONSTANT;
+            //     // floatBytes.myFloat = corrected_PM_25;
+            //     floatBytes.myFloat = plantower.pm2_5.adj_value;
+            // }else if(i == 3){
+            //     ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM10_PACKET_CONSTANT;
+            //     // floatBytes.myFloat = PM10Value;
+            //     floatBytes.myFloat = plantower.pm10.adj_value;
+            // }
+            else if(i == 4){
                 ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = CARBON_DIOXIDE_PACKET_CONSTANT;
                 floatBytes.myFloat = CO2_float;
             }
@@ -2002,7 +2010,7 @@ void outputParticles(){
 void goToSleep(void){
     //Serial.println("Going to sleep:)");
     digitalWrite(POWER_LED_EN, LOW);
-    digitalWrite(PLANTOWER_EN, LOW);
+    //digitalWrite(PLANTOWER_EN, LOW);
     digitalWrite(ESP_WROOM_EN, LOW);
     digitalWrite(BLOWER_EN, LOW);
     digitalWrite(CO2_EN, LOW);
@@ -2063,12 +2071,12 @@ void goToSleepBattery(void){
 
 void resetESP(void){
   digitalWrite(ESP_WROOM_EN, LOW);
-  digitalWrite(PLANTOWER_EN, LOW);
+  //digitalWrite(PLANTOWER_EN, LOW);
   digitalWrite(BLOWER_EN, LOW);
   digitalWrite(CO2_EN, LOW);
   delay(1000);
   digitalWrite(ESP_WROOM_EN, HIGH);
-  digitalWrite(PLANTOWER_EN, HIGH);
+  //digitalWrite(PLANTOWER_EN, HIGH);
   digitalWrite(BLOWER_EN, HIGH);
   digitalWrite(CO2_EN, HIGH);
   delay(1000);
@@ -2092,19 +2100,21 @@ void serialMenu(){
         serialGetCoSlope();
     }else if(incomingByte == 'd'){
         serialGetCoZero();
-    }else if(incomingByte == 'e'){
-        serialGetPm1Slope();
-    }else if(incomingByte == 'f'){
-         serialGetPm1Zero();
-    }else if(incomingByte == 'g'){
-        serialGetPm25Slope();
-    }else if(incomingByte == 'h'){
-        serialGetPm25Zero();
-    }else if(incomingByte == 'i'){
-        serialGetPm10Slope();
-    }else if(incomingByte == 'j'){
-        serialGetPm10Zero();
-    }else if(incomingByte == 'k'){
+    }
+    // else if(incomingByte == 'e'){
+    //     serialGetPm1Slope();
+    // }else if(incomingByte == 'f'){
+    //      serialGetPm1Zero();
+    // }else if(incomingByte == 'g'){
+    //     serialGetPm25Slope();
+    // }else if(incomingByte == 'h'){
+    //     serialGetPm25Zero();
+    // }else if(incomingByte == 'i'){
+    //     serialGetPm10Slope();
+    // }else if(incomingByte == 'j'){
+    //     serialGetPm10Zero();
+    //}
+    else if(incomingByte == 'k'){
         serialGetTemperatureSlope();
     }else if(incomingByte == 'l'){
         serialGetTemperatureZero();
@@ -2761,137 +2771,137 @@ void serialGetCoZero(void){
     }
 }
 
-void serialGetPm1Slope(void){
-    Serial.println();
-    Serial.print("Current PM1 slope:");
-    Serial.print(String(plantower.pm1.slope, 2));
-    Serial.println(" ");
-    Serial.print("Enter new PM1 slope\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    float tempfloat = tempString.toFloat();
-    int tempValue;
+// void serialGetPm1Slope(void){
+//     Serial.println();
+//     Serial.print("Current PM1 slope:");
+//     Serial.print(String(plantower.pm1.slope, 2));
+//     Serial.println(" ");
+//     Serial.print("Enter new PM1 slope\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     float tempfloat = tempString.toFloat();
+//     int tempValue;
 
-    if(tempfloat >= 0.5 && tempfloat < 1.5){
-        plantower.pm1.slope = tempfloat;
-        tempfloat *= 100;
-        tempValue = tempfloat;
-        Serial.print("\n\rNew PM1 slope: ");
-        Serial.println(String(plantower.pm1.slope, 2));
+//     if(tempfloat >= 0.5 && tempfloat < 1.5){
+//         plantower.pm1.slope = tempfloat;
+//         tempfloat *= 100;
+//         tempValue = tempfloat;
+//         Serial.print("\n\rNew PM1 slope: ");
+//         Serial.println(String(plantower.pm1.slope, 2));
 
-        EEPROM.put(PM_1_SLOPE_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//         EEPROM.put(PM_1_SLOPE_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetPm1Zero(void){
-    Serial.println();
-    Serial.print("Current PM1 zero:");
-    Serial.print(plantower.pm1.zero);
-    Serial.println(" ug/m3");
-    Serial.print("Enter new PM1 Zero\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    int tempValue = tempString.toInt();
+// void serialGetPm1Zero(void){
+//     Serial.println();
+//     Serial.print("Current PM1 zero:");
+//     Serial.print(plantower.pm1.zero);
+//     Serial.println(" ug/m3");
+//     Serial.print("Enter new PM1 Zero\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     int tempValue = tempString.toInt();
 
-    if(tempValue >= -1000 && tempValue < 1000){
-        Serial.print("\n\rNew PM1 zero: ");
-        Serial.println(tempValue);
-        plantower.pm1.zero = tempValue;
-        EEPROM.put(PM_1_ZERO_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//     if(tempValue >= -1000 && tempValue < 1000){
+//         Serial.print("\n\rNew PM1 zero: ");
+//         Serial.println(tempValue);
+//         plantower.pm1.zero = tempValue;
+//         EEPROM.put(PM_1_ZERO_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetPm25Slope(void){
-    Serial.println();
-    Serial.print("Current PM2.5 slope:");
-    Serial.print(String(plantower.pm2_5.slope, 2));
-    Serial.println(" ");
-    Serial.print("Enter new PM2.5 slope\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    float tempfloat = tempString.toFloat();
-    int tempValue;
+// void serialGetPm25Slope(void){
+//     Serial.println();
+//     Serial.print("Current PM2.5 slope:");
+//     Serial.print(String(plantower.pm2_5.slope, 2));
+//     Serial.println(" ");
+//     Serial.print("Enter new PM2.5 slope\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     float tempfloat = tempString.toFloat();
+//     int tempValue;
 
-    if(tempfloat >= 0.5 && tempfloat < 1.5){
-        plantower.pm2_5.slope = tempfloat;
-        tempfloat *= 100;
-        tempValue = tempfloat;
-        Serial.print("\n\rNew PM2.5 slope: ");
-        Serial.println(String(plantower.pm2_5.slope,2));
+//     if(tempfloat >= 0.5 && tempfloat < 1.5){
+//         plantower.pm2_5.slope = tempfloat;
+//         tempfloat *= 100;
+//         tempValue = tempfloat;
+//         Serial.print("\n\rNew PM2.5 slope: ");
+//         Serial.println(String(plantower.pm2_5.slope,2));
 
-        EEPROM.put(PM_25_SLOPE_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//         EEPROM.put(PM_25_SLOPE_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetPm25Zero(void){
-    Serial.println();
-    Serial.print("Current PM2.5 zero:");
-    Serial.print(plantower.pm2_5.zero);
-    Serial.println(" ug/m3");
-    Serial.print("Enter new PM2.5 Zero\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    int tempValue = tempString.toInt();
+// void serialGetPm25Zero(void){
+//     Serial.println();
+//     Serial.print("Current PM2.5 zero:");
+//     Serial.print(plantower.pm2_5.zero);
+//     Serial.println(" ug/m3");
+//     Serial.print("Enter new PM2.5 Zero\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     int tempValue = tempString.toInt();
 
-    if(tempValue >= -1000 && tempValue < 1000){
-        Serial.print("\n\rNew PM2.5 zero: ");
-        Serial.println(tempValue);
-        plantower.pm2_5.zero = tempValue;
-        EEPROM.put(PM_25_ZERO_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//     if(tempValue >= -1000 && tempValue < 1000){
+//         Serial.print("\n\rNew PM2.5 zero: ");
+//         Serial.println(tempValue);
+//         plantower.pm2_5.zero = tempValue;
+//         EEPROM.put(PM_25_ZERO_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetPm10Slope(void){
-    Serial.println();
-    Serial.print("Current PM10 slope:");
-    Serial.print(String(plantower.pm10.slope, 2));
-    Serial.println(" ");
-    Serial.print("Enter new PM10 slope\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    float tempfloat = tempString.toFloat();
-    int tempValue;
+// void serialGetPm10Slope(void){
+//     Serial.println();
+//     Serial.print("Current PM10 slope:");
+//     Serial.print(String(plantower.pm10.slope, 2));
+//     Serial.println(" ");
+//     Serial.print("Enter new PM10 slope\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     float tempfloat = tempString.toFloat();
+//     int tempValue;
 
-    if(tempfloat >= 0.5 && tempfloat < 1.5){
-        plantower.pm10.slope = tempfloat;
-        tempfloat *= 100;
-        tempValue = tempfloat;
-        Serial.print("\n\rNew PM10 slope: ");
-        Serial.println(String(plantower.pm10.slope,2));
+//     if(tempfloat >= 0.5 && tempfloat < 1.5){
+//         plantower.pm10.slope = tempfloat;
+//         tempfloat *= 100;
+//         tempValue = tempfloat;
+//         Serial.print("\n\rNew PM10 slope: ");
+//         Serial.println(String(plantower.pm10.slope,2));
 
-        EEPROM.put(PM_10_SLOPE_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//         EEPROM.put(PM_10_SLOPE_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetPm10Zero(void){
-    Serial.println();
-    Serial.print("Current PM10 zero:");
-    Serial.print(plantower.pm10.zero);
-    Serial.println(" um/m3");
-    Serial.print("Enter new PM10 Zero\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    int tempValue = tempString.toInt();
+// void serialGetPm10Zero(void){
+//     Serial.println();
+//     Serial.print("Current PM10 zero:");
+//     Serial.print(plantower.pm10.zero);
+//     Serial.println(" um/m3");
+//     Serial.print("Enter new PM10 Zero\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     int tempValue = tempString.toInt();
 
-    if(tempValue >= -1000 && tempValue < 1000){
-        Serial.print("\n\rNew PM10 zero: ");
-        Serial.println(tempValue);
-        plantower.pm10.zero = tempValue;
-        EEPROM.put(PM_10_ZERO_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//     if(tempValue >= -1000 && tempValue < 1000){
+//         Serial.print("\n\rNew PM10 zero: ");
+//         Serial.println(tempValue);
+//         plantower.pm10.zero = tempValue;
+//         EEPROM.put(PM_10_ZERO_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
 void serialGetTemperatureSlope(void){
     Serial.println();
