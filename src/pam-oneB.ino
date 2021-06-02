@@ -21,7 +21,7 @@
 #include "PAMSerial/PAMSerialMenu/PAMSerialMenu.h"
 
 #include "PAMSensorManager/PAMSensorManager.h"
-#include "Sensors/T6713/T6713.h"
+//#include "Sensors/T6713/T6713.h"
 #include "Sensors/TPHFusion/TPHFusion.h"
 #include "Sensors/Plantower/Plantower.h"
 #include "Sensors/PAMCO/PAMCO.h"
@@ -121,7 +121,7 @@ SYSTEM_THREAD(ENABLED);
 //global objects
 
 // PAM Sensors
-T6713 t6713;
+//T6713 t6713;
 TPHFusion tph_fusion(0x27, false);
 //Plantower plantower(Serial4);
 PAMCO pamco_a(ADS1115_1_ADDR, LMP91000_1_EN, CO_A_ZERO_MEM_ADDRESS, CO_A_SLOPE_MEM_ADDRESS);
@@ -359,11 +359,11 @@ void readStoredVars(void){
     }
 
     EEPROM.get(CO_A_SLOPE_MEM_ADDRESS, tempValue);
-    t6713.CO2.slope = tempValue;
-    t6713.CO2.slope /= 100;
-    EEPROM.get(CO_B_SLOPE_MEM_ADDRESS, tempValue);
     pamco_a.co.slope = tempValue;
     pamco_a.co.slope /= 100;
+    EEPROM.get(CO_B_SLOPE_MEM_ADDRESS, tempValue);
+    pamco_b.co.slope = tempValue;
+    pamco_b.co.slope /= 100;
     // EEPROM.get(PM_1_SLOPE_MEM_ADDRESS, tempValue);
     // plantower.pm1.slope = tempValue;
     // plantower.pm1.slope /= 100;
@@ -383,8 +383,8 @@ void readStoredVars(void){
     tph_fusion.humidity->slope = tempValue;
     tph_fusion.humidity->slope /= 100;
 
-    EEPROM.get(CO_A_ZERO_MEM_ADDRESS, t6713.CO2.zero);
-    EEPROM.get(CO_B_ZERO_MEM_ADDRESS, pamco_a.co.zero);
+    EEPROM.get(CO_A_ZERO_MEM_ADDRESS, pamco_a.co.zero);
+    EEPROM.get(CO_B_ZERO_MEM_ADDRESS, pamco_b.co.zero);
     // EEPROM.get(PM_1_ZERO_MEM_ADDRESS, plantower.pm1.zero);
     // EEPROM.get(PM_25_ZERO_MEM_ADDRESS, plantower.pm2_5.zero);
     // EEPROM.get(PM_10_ZERO_MEM_ADDRESS, plantower.pm10.zero);
@@ -422,13 +422,13 @@ void readStoredVars(void){
         measurements_to_average = 1;
 
     //check all values to make sure are within limits
-    if(!t6713.CO2.slope)
-    {
-        t6713.CO2.slope = 1;
-    }
     if(!pamco_a.co.slope)
     {
         pamco_a.co.slope = 1;
+    }
+    if(!pamco_b.co.slope)
+    {
+        pamco_b.co.slope = 1;
     }
     // if(!plantower.pm1.slope)
     // {
@@ -713,7 +713,7 @@ void setup()
     }
 
     PAMSensorManager *manager = PAMSensorManager::GetInstance();
-    manager->addSensor(&t6713);
+    manager->addSensor(&pamco_b);
     manager->addSensor(&tph_fusion);
     //manager->addSensor(&plantower);
     manager->addSensor(&pamco_a);
@@ -768,24 +768,24 @@ void loop() {
     }
     readGpsStream();
 
-    CO2_float = readCO2();
+   // CO2_float = readCO2();
 
 
     //correct for altitude
     // float pressure_correction = bme.pressure/100;
-    float pressure_correction = tph_fusion.pressure->adj_value;
-    if(pressure_correction > LOW_PRESSURE_LIMIT && pressure_correction < HIGH_PRESSURE_LIMIT){
-        pressure_correction /= SEALEVELPRESSURE_HPA;
-        if(debugging_enabled){
-            Serial.printf("pressure correction factor for CO2:%1.2f\n\r", pressure_correction);
+    // float pressure_correction = tph_fusion.pressure->adj_value;
+    // if(pressure_correction > LOW_PRESSURE_LIMIT && pressure_correction < HIGH_PRESSURE_LIMIT){
+    //     pressure_correction /= SEALEVELPRESSURE_HPA;
+    //     if(debugging_enabled){
+    //         Serial.printf("pressure correction factor for CO2:%1.2f\n\r", pressure_correction);
 
-        }
-        CO2_float *= pressure_correction;
-    }else{
-        Serial.println("Error: Pressure out of range, not using pressure correction for CO2.");
-        Serial.printf("Pressure=%1.2f\n\r", pressure_correction);
+    //     }
+    //     CO2_float *= pressure_correction;
+    // }else{
+    //     Serial.println("Error: Pressure out of range, not using pressure correction for CO2.");
+    //     Serial.printf("Pressure=%1.2f\n\r", pressure_correction);
 
-    }
+    // }
 
 
     if(ozone_enabled){
@@ -1266,13 +1266,13 @@ double readSound(void){
 }
 
 
-float readCO2(void){
-    t6713.measure();
-    if (t6713.CO2.adj_value != 0 && t6713.CO2.adj_value != VALUE_UNKNOWN) {
-        CO2_float = t6713.CO2.adj_value;
-    }
-    return CO2_float;
-}
+// float readCO2(void){
+//     t6713.measure();
+//     if (t6713.CO2.adj_value != 0 && t6713.CO2.adj_value != VALUE_UNKNOWN) {
+//         CO2_float = t6713.CO2.adj_value;
+//     }
+//     return CO2_float;
+// }
 
 void readOzone(void){
     int tempValue = 0;
@@ -1525,7 +1525,7 @@ void outputParticles(){
         // readPlantower();
         readGpsStream();
         // CO2_float = t6713.readPPM();
-        CO2_float = readCO2();
+        //CO2_float = readCO2();
         //correct for altitude
         // float pressure_correction = bme.pressure/100;
         float pressure_correction = tph_fusion.pressure->adj_value;
@@ -1894,29 +1894,33 @@ void serialMenu(){
 
         Serial.println("Allowing batfet to turn on");
         writeRegister(7, 0b01001011);   //allow batfet to turn on
-    }else if(incomingByte == 'R'){
-        if(abc_logic_enabled){
-            Serial.println("Disabling ABC logic for CO2 sensor");
-            abc_logic_enabled = 0;
-            EEPROM.put(ABC_ENABLE_MEM_ADDRESS, abc_logic_enabled);
-            // t6713.disableABCLogic();
-            t6713._t6713.disableABCLogic();
-        }else{
-            Serial.println("ABC logic already disabled");
-        }
+    }
+    // else if(incomingByte == 'R'){
+    //     if(abc_logic_enabled){
+    //         Serial.println("Disabling ABC logic for CO2 sensor");
+    //         abc_logic_enabled = 0;
+    //         EEPROM.put(ABC_ENABLE_MEM_ADDRESS, abc_logic_enabled);
+    //         // t6713.disableABCLogic();
+    //         t6713._t6713.disableABCLogic();
+    //     }
+    //     else{
+    //         Serial.println("ABC logic already disabled");
+    //     }
 
-    }else if(incomingByte == 'S'){
-        if(!abc_logic_enabled){
-            Serial.println("Enabling abc logic for CO2 sensor");
-            abc_logic_enabled = 1;
-            EEPROM.put(ABC_ENABLE_MEM_ADDRESS, abc_logic_enabled);
-            // t6713.enableABCLogic();
-            t6713._t6713.enableABCLogic();
+    // }
+    // else if(incomingByte == 'S'){
+    //     if(!abc_logic_enabled){
+    //         Serial.println("Enabling abc logic for CO2 sensor");
+    //         abc_logic_enabled = 1;
+    //         EEPROM.put(ABC_ENABLE_MEM_ADDRESS, abc_logic_enabled);
+    //         // t6713.enableABCLogic();
+    //         t6713._t6713.enableABCLogic();
 
-        }else{
-            Serial.println("ABC logic already enabled");
-        }
-    }else if(incomingByte == 'T'){
+    //     }else{
+    //         Serial.println("ABC logic already enabled");
+    //     }
+    // }
+    else if(incomingByte == 'T'){
         if (!hih8120_enabled) {
             Serial.println("Enabling HIH8120 RH sensor");
             hih8120_enabled = 1;
@@ -1941,11 +1945,13 @@ void serialMenu(){
             CO_socket = 0;
             EEPROM.put(CO_SOCKET_MEM_ADDRESS, CO_socket);
         }
-    }else if(incomingByte == 'V'){
-        Serial.println("Reseting the CO2 sensor");
-        // t6713.resetSensor();
-        t6713._t6713.resetSensor();
-    }else if(incomingByte == '1'){
+    }
+    // else if(incomingByte == 'V'){
+    //     Serial.println("Reseting the CO2 sensor");
+    //     // t6713.resetSensor();
+    //     t6713._t6713.resetSensor();
+    // }
+    else if(incomingByte == '1'){
         serialGetLowerLimit();
     }else if(incomingByte == '2'){
         serialGetUpperLimit();
@@ -2038,7 +2044,7 @@ void serialMenu(){
         //calibrate CO2 sensor
         //if(debugging_enabled){
             // t6713.calibrate(1);
-            t6713._t6713.calibrate(1);
+            //t6713._t6713.calibrate(1);
         //}else{
          //   t6713.calibrate(0);
         //}
