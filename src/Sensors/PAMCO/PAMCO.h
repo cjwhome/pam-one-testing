@@ -22,7 +22,7 @@
 class PAMCO: public PAMSensor {
 
 public:
-    PAMCO(uint8_t ads_address, uint8_t enable_pin);
+    PAMCO(uint8_t ads_address, uint8_t enable_pin, uint8_t co_zero, uint8_t co_slope);
     ~PAMCO();
 
     bool start();

@@ -1,7 +1,7 @@
 #include "PAMCO.h"
 
-PAMCO::PAMCO(uint8_t _ads_address, uint8_t _enable_pin)
-    : co(CO_SLOPE_MEM_ADDRESS, CO_ZERO_MEM_ADDRESS)
+PAMCO::PAMCO(uint8_t _ads_address, uint8_t _enable_pin, uint8_t co_zero, uint8_t co_slope)
+    : co(co_zero, co_slope)
 {
     this->name = "CO Sensor";
 

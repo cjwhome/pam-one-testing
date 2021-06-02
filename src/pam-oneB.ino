@@ -124,7 +124,9 @@ SYSTEM_THREAD(ENABLED);
 T6713 t6713;
 TPHFusion tph_fusion(0x27, false);
 //Plantower plantower(Serial4);
-PAMCO pamco(ADS1115_1_ADDR, LMP91000_1_EN);
+PAMCO pamco_a(ADS1115_1_ADDR, LMP91000_1_EN, CO_A_ZERO_MEM_ADDRESS, CO_A_SLOPE_MEM_ADDRESS);
+PAMCO pamco_b(ADS1115_2_ADDR, LMP91000_2_EN, CO_B_ZERO_MEM_ADDRESS, CO_B_SLOPE_MEM_ADDRESS);
+
 
 
 FuelGauge fuel;
@@ -193,6 +195,8 @@ double sound_average;
 double measurement_number = 0;
 
 SerialBuffer<4096> serBuf(Serial4); // This is how we setup getting a bigger buffer for Serial4
+bool haveOfflineData = false;
+String diagnosticData = "";
 
 
 //calibration parameters
@@ -306,7 +310,6 @@ void serialIncreaseInputCurrent(void);
 void writeLogFile(String data);
 
 void outputSerialMenuOptions(void);
-void outputToCloud(void);
 void echoGps();
 void readOzone(void);
 // float readCO(void);
@@ -340,91 +343,6 @@ void writeRegister(uint8_t reg, uint8_t value) {
 
 }
 
-
-//todo: average everything except ozone
-void outputToCloud(String data){
-    String webhook_data = " ";
-    // CO_sum += CO_float;
-    CO_sum += pamco.co.adj_value;
-    CO2_sum += t6713.CO2.adj_value;
-    O3_sum = O3_float;      //do not average ozone because it is averaged on the ozone monitor
-    measurement_count++;
-
-    if(measurement_count == measurements_to_average){
-        CO_sum /= measurements_to_average;
-        CO2_sum /= measurements_to_average;
-        //O3_sum /= measurements_to_average;
-
-        measurement_count = 0;
-        // String webhook_data = String(DEVICE_id) + ",VOC: " + String(bme.gas_resistance / 1000.0, 1) + ", CO: " + CO_sum + ", CO2: " + CO2_sum + ", PM1: " + PM01Value + ",PM2.5: " + corrected_PM_25 + ", PM10: " + PM10Value + ",Temp: " + String(readTemperature(), 1) + ",Press: ";
-        //String webhook_data = String(DEVICE_id) + ",VOC: " + String(tph_fusion.voc->adj_value, 1) + ", CO: " + CO_sum + ", CO2: " + CO2_sum + ", PM1: " + plantower.pm1.adj_value + ",PM2.5: " + plantower.pm2_5.adj_value + ", PM10: " + plantower.pm10.adj_value + ",Temp: " + String(readTemperature(), 1) + ",Press: ";
-        // webhook_data += String(bme.pressure / 100.0, 1) + ",HUM: " + String(bme.humidity, 1) + ",Snd: " + String(sound_average) + ",O3: " + O3_sum + "\n\r";
-        webhook_data += String(tph_fusion.pressure->adj_value, 1) + ",HUM: " + String(tph_fusion.humidity->adj_value, 1) + ",Snd: " + String(sound_average) + ",O3: " + O3_sum + "\n\r";
-
-        if(Particle.connected() && serial_cellular_enabled){
-            status_word.status_int |= 0x0002;
-            Particle.publish("pamup", data, PRIVATE);
-            Particle.process(); //attempt at ensuring the publish is complete before sleeping
-            if(debugging_enabled){
-              Serial.println("Published data!");
-              writeLogFile("Published data!");
-            }
-        }else{
-            if(serial_cellular_enabled == 0){
-                if(debugging_enabled){
-                    Serial.println("Cellular is disabled.");
-                    writeLogFile("Cellular is disabled.");
-
-                  }
-            }else{
-                status_word.status_int &= 0xFFFD;   //clear the connected bit
-                if(debugging_enabled){
-                    Serial.println("Couldn't connect to particle.");
-                    writeLogFile("Couldn't connect to particle.");
-                  }
-            }
-        }
-        CO_sum = 0;
-        CO2_sum = 0;
-        O3_sum = 0;
-    }
-}
-
-//send memory address and value separated by a comma
-// int remoteWriteStoredVars(String addressAndValue){
-//     uint16_t tempValue = 0;
-
-//     int index_of_comma = addressAndValue.indexOf(',');
-//     Serial.print("Full address and value substring: ");
-//     Serial.println(addressAndValue);
-//     String addressString = addressAndValue.substring(0, index_of_comma);
-//     String valueString = addressAndValue.substring(index_of_comma + 1);
-
-//     Serial.printf("address substring: %s\n\r", addressString);
-//     Serial.printf("Value substring: %s\n\r", valueString);
-
-//     int numerical_mem_address = addressString.toInt();
-//     int numerical_value = valueString.toInt();
-
-//     if(numerical_mem_address >= 0 && numerical_mem_address <= MAX_MEM_ADDRESS){
-//         EEPROM.put(numerical_mem_address, numerical_value);
-//         return 1;
-//     }else{
-//         return -1;
-//     }
-
-// }
-
-// int remoteReadStoredVars(String mem_address){
-//     uint16_t tempValue = 0;
-//     int numerical_mem_address = mem_address.toInt();
-//     if(numerical_mem_address >= 0 && numerical_mem_address <= MAX_MEM_ADDRESS){
-//         EEPROM.get(numerical_mem_address, tempValue);
-//         return tempValue;
-//     }else{
-//         return -1;
-//     }
-// }
 //read all eeprom stored variables
 void readStoredVars(void){
     Serial.println("MAIN IS READING STORED VARS");
@@ -440,12 +358,12 @@ void readStoredVars(void){
         writeDefaultSettings();
     }
 
-    EEPROM.get(CO2_SLOPE_MEM_ADDRESS, tempValue);
+    EEPROM.get(CO_A_SLOPE_MEM_ADDRESS, tempValue);
     t6713.CO2.slope = tempValue;
     t6713.CO2.slope /= 100;
-    EEPROM.get(CO_SLOPE_MEM_ADDRESS, tempValue);
-    pamco.co.slope = tempValue;
-    pamco.co.slope /= 100;
+    EEPROM.get(CO_B_SLOPE_MEM_ADDRESS, tempValue);
+    pamco_a.co.slope = tempValue;
+    pamco_a.co.slope /= 100;
     // EEPROM.get(PM_1_SLOPE_MEM_ADDRESS, tempValue);
     // plantower.pm1.slope = tempValue;
     // plantower.pm1.slope /= 100;
@@ -465,8 +383,8 @@ void readStoredVars(void){
     tph_fusion.humidity->slope = tempValue;
     tph_fusion.humidity->slope /= 100;
 
-    EEPROM.get(CO2_ZERO_MEM_ADDRESS, t6713.CO2.zero);
-    EEPROM.get(CO_ZERO_MEM_ADDRESS, pamco.co.zero);
+    EEPROM.get(CO_A_ZERO_MEM_ADDRESS, t6713.CO2.zero);
+    EEPROM.get(CO_B_ZERO_MEM_ADDRESS, pamco_a.co.zero);
     // EEPROM.get(PM_1_ZERO_MEM_ADDRESS, plantower.pm1.zero);
     // EEPROM.get(PM_25_ZERO_MEM_ADDRESS, plantower.pm2_5.zero);
     // EEPROM.get(PM_10_ZERO_MEM_ADDRESS, plantower.pm10.zero);
@@ -508,9 +426,9 @@ void readStoredVars(void){
     {
         t6713.CO2.slope = 1;
     }
-    if(!pamco.co.slope)
+    if(!pamco_a.co.slope)
     {
-        pamco.co.slope = 1;
+        pamco_a.co.slope = 1;
     }
     // if(!plantower.pm1.slope)
     // {
@@ -531,8 +449,8 @@ void writeDefaultSettings(void){
     EEPROM.put(DEVICE_ID_MEM_ADDRESS, 1555);
 
 
-    EEPROM.put(CO2_SLOPE_MEM_ADDRESS, 100);
-    EEPROM.put(CO_SLOPE_MEM_ADDRESS, 100);
+    EEPROM.put(CO_A_SLOPE_MEM_ADDRESS, 100);
+    EEPROM.put(CO_B_SLOPE_MEM_ADDRESS, 100);
     EEPROM.put(PM_1_SLOPE_MEM_ADDRESS, 100);
     EEPROM.put(PM_25_SLOPE_MEM_ADDRESS, 100);
     EEPROM.put(PM_10_SLOPE_MEM_ADDRESS, 100);
@@ -540,8 +458,8 @@ void writeDefaultSettings(void){
     EEPROM.put(PRESSURE_SLOPE_MEM_ADDRESS, 100);
     EEPROM.put(RH_SLOPE_MEM_ADDRESS, 100);
 
-    EEPROM.put(CO2_ZERO_MEM_ADDRESS, 0);
-    EEPROM.put(CO_ZERO_MEM_ADDRESS, 0);
+    EEPROM.put(CO_A_ZERO_MEM_ADDRESS, 0);
+    EEPROM.put(CO_B_ZERO_MEM_ADDRESS, 0);
     EEPROM.put(PM_1_ZERO_MEM_ADDRESS, 0);
     EEPROM.put(PM_25_ZERO_MEM_ADDRESS, 0);
     EEPROM.put(PM_10_ZERO_MEM_ADDRESS, 0);
@@ -707,11 +625,14 @@ void setup()
     //debugging_enabled = 1;  //for testing...
     //initialize serial1 for communication with BLE nano from redbear labs
     Serial1.begin(9600);
-    //init serial4 to communicate with Plantower PMS5003
-    // Serial4.begin(9600);
+    //init serial4 to communicate with the raspi
+    Serial4.begin(9600);
     Serial5.begin(9600);        //gps is connected to this serial port
     //set the Timeout to 1500ms, longer than the data transmission periodic time of the sensor
     // Serial4.setTimeout(5000);
+
+    // This gives us a bigger buffer for Serial4 for communication with the Serial4
+    serBuf.setup();
 
     // Setup the PMIC manually (resets the BQ24195 charge controller)
     // REG00 Input Source Control Register  (disabled)
@@ -795,7 +716,7 @@ void setup()
     manager->addSensor(&t6713);
     manager->addSensor(&tph_fusion);
     //manager->addSensor(&plantower);
-    manager->addSensor(&pamco);
+    manager->addSensor(&pamco_a);
     serial_menu.addResponder(PAMSensorManager::GetInstance()->serial_menu_rd, "Sensor Settings");
 
     char *csv_header = manager->csvHeader();
@@ -878,6 +799,23 @@ void loop() {
 
     //getEspWifiStatus();
     //outputDataToESP();
+
+    if (serBuf.available() > 0)
+    {
+        incomingByte = serBuf.read();
+        Serial.println("We have recieved something from the touch screen. This is the incomingByte: ");
+        Serial.println(incomingByte);
+        if (incomingByte == 'm')
+        {
+            serialMenu();
+        }
+        else 
+        {
+            getEspAQSyncData(incomingByte);
+        }
+
+    }
+
     outputCOtoPI();
 
     sample_counter = ++sample_counter;
@@ -1377,8 +1315,8 @@ void outputCOtoPI(void)
     Serial.println("Outputting CO to PI.");
 
     CO_string += String(measurement_number, 0) + ",";
-    CO_string += String(CO_float_A, 3) + ",";
-    CO_string += String(CO_float_B, 3) + ",";
+    CO_string += String(pamco_a.co.adj_value, 3) + ",";
+    CO_string += String(pamco_b.co.adj_value, 3) + ",";
     if (gps.get_latitude() != 0)
     {
         if (gps.get_nsIndicator() == 0)
@@ -1422,312 +1360,6 @@ void outputCOtoPI(void)
     //send ending delimeter
     //Serial1.print("&");
 }
-
-// void outputDataToESP(void){
-//     //used for converting double to bytes for latitude and longitude
-//     char buffer[2];
-//     union{
-// 	       double myDouble;
-// 	       unsigned char bytes[sizeof(double)];
-//     } doubleBytes;
-//     //doubleBytes.myDouble = double;
-//     //
-
-//     //used for converting float to bytes for measurement value
-//     union {
-//         float myFloat;
-//         unsigned char bytes[4];
-//     } floatBytes;
-
-//     //used for converting word to bytes for lat and longitude
-//     union {
-//         int16_t myWord;
-//         unsigned char bytes[2];
-//     }wordBytes;
-
-
-//     //get a current time string
-//     time_t time = Time.now();
-//     Time.setFormat(TIME_FORMAT_ISO8601_FULL);
-
-
-
-//     //************Fill the cloud output array and file output array for row in csv file on usd card*****************************/
-//     //This is different than the ble packet in that we are putting all of the data that we have in one packet
-//     //"$1:D555g47.7M-22.050533C550.866638r1R1q2T45.8P844.9h17.2s1842.700000&"
-//     String cloud_output_string = "";    //create a clean string
-//     String csv_output_string = "";
-//     cloud_output_string += '^';         //start delimeter
-//     cloud_output_string += String(1) + ";";           //header
-//     cloud_output_string += String(DEVICE_ID_PACKET_CONSTANT) + String(DEVICE_id);   //device id
-//     csv_output_string += String(DEVICE_id) + ",";
-//     // cloud_output_string += String(CARBON_MONOXIDE_PACKET_CONSTANT) + String(CO_float, 3);
-//     cloud_output_string += String(CARBON_MONOXIDE_PACKET_CONSTANT) + String(pamco.co.adj_value, 3);
-//     // csv_output_string += String(CO_float, 3) + ",";
-//     csv_output_string += String(pamco.co.adj_value, 3) + ",";
-//     #if AFE2_en
-//     cloud_output_string += String(CARBON_MONOXIDE_PACKET_CONSTANT) + String(CO_float_2, 3);
-//     csv_output_string += String(CO_float_2, 3) + ",";
-//     #endif
-//     cloud_output_string += String(CARBON_DIOXIDE_PACKET_CONSTANT) + String(CO2_float, 0);
-//     csv_output_string += String(CO2_float, 0) + ",";
-//     if(voc_enabled){
-//         cloud_output_string += String(VOC_PACKET_CONSTANT) + String(air_quality_score, 1);
-//         csv_output_string += String(air_quality_score, 1) + ",";
-//     }
-//     // cloud_output_string += String(PM1_PACKET_CONSTANT) + String(PM01Value);
-//     cloud_output_string += String(PM1_PACKET_CONSTANT) + String(plantower.pm1.adj_value);
-//     // csv_output_string += String(PM01Value) + ",";
-//     csv_output_string += String(plantower.pm1.adj_value) + ",";
-//     // cloud_output_string += String(PM2PT5_PACKET_CONSTANT) + String(corrected_PM_25, 0);
-//     cloud_output_string += String(PM2PT5_PACKET_CONSTANT) + String(plantower.pm2_5.adj_value, 0);
-//     // csv_output_string += String(corrected_PM_25, 0) + ",";
-//     csv_output_string += String(plantower.pm2_5.adj_value, 0) + ",";
-//     // cloud_output_string += String(PM10_PACKET_CONSTANT) + String(PM10Value);
-//     cloud_output_string += String(PM10_PACKET_CONSTANT) + String(plantower.pm10.adj_value);
-//     // csv_output_string += String(PM10Value) + ",";
-//     csv_output_string += String(plantower.pm10.adj_value) + ",";
-
-//     cloud_output_string += String(TEMPERATURE_PACKET_CONSTANT) + String(readTemperature(), 1);
-//     csv_output_string += String(readTemperature(), 1) + ",";
-//     // cloud_output_string += String(PRESSURE_PACKET_CONSTANT) + String(bme.pressure / 100.0, 1);
-//     cloud_output_string += String(PRESSURE_PACKET_CONSTANT) + String(tph_fusion.pressure->adj_value, 1);
-//     // csv_output_string += String(bme.pressure / 100.0, 1) + ",";
-//     csv_output_string += String(tph_fusion.pressure->adj_value, 1) + ",";
-//     cloud_output_string += String(HUMIDITY_PACKET_CONSTANT) + String(readHumidity(), 1);
-//     csv_output_string += String(readHumidity(), 1) + ",";
-//     if(ozone_enabled){
-//         cloud_output_string += String(OZONE_PACKET_CONSTANT) + String(O3_float, 1);
-//         csv_output_string += String(O3_float, 1) + ",";
-//     }
-//     cloud_output_string += String(BATTERY_PACKET_CONSTANT) + String(fuel.getSoC(), 1);
-//     csv_output_string += String(fuel.getSoC(), 1) + ",";
-//     cloud_output_string += String(SOUND_PACKET_CONSTANT) + String(sound_average, 0);
-
-//     csv_output_string += String(sound_average, 0) + ",";
-//     cloud_output_string += String(LATITUDE_PACKET_CONSTANT);
-
-//     if(gps.get_latitude() != 0){
-//         if(gps.get_nsIndicator() == 0){
-//             csv_output_string += "-";
-//             cloud_output_string += "-";
-//         }
-//         csv_output_string += String(gps.get_latitude()) + ",";
-//         cloud_output_string += String(gps.get_latitude());
-//     }else{
-//         csv_output_string += String(geolocation_latitude)+ ",";
-//         cloud_output_string += String(geolocation_latitude);
-//     }
-
-//     cloud_output_string += String(LONGITUDE_PACKET_CONSTANT);
-
-//     if(gps.get_longitude() != 0){
-//         if(gps.get_ewIndicator() == 0x01){
-//             csv_output_string += "-";
-//             cloud_output_string += "-";
-//         }
-//         csv_output_string += String(gps.get_longitude()) + ",";
-//         cloud_output_string += String(gps.get_longitude());
-//     }else{
-//         csv_output_string += String(geolocation_longitude) + ",";
-//         cloud_output_string += String(geolocation_longitude);
-//     }
-
-//     cloud_output_string += String(ACCURACY_PACKET_CONSTANT);
-//     if (gps.get_longitude() != 0) {
-//         csv_output_string += String(gps.get_horizontalDillution() / 10.0) + ",";
-//         cloud_output_string += String(gps.get_horizontalDillution() / 10.0);
-//     } else {
-//         csv_output_string += String(geolocation_accuracy) + ",";
-//         cloud_output_string += String(geolocation_accuracy);
-//     }
-
-//     csv_output_string += String(status_word.status_int) + ",";
-//     csv_output_string += String(Time.format(time, "%d/%m/%y,%H:%M:%S"));
-//     cloud_output_string += String(PARTICLE_TIME_PACKET_CONSTANT) + String(Time.now());
-//     cloud_output_string += '&';
-//     if(debugging_enabled){
-//         Serial.println("Line to write to cloud:");
-//         Serial.println(cloud_output_string);
-//     }
-//     if(!esp_wifi_connection_status){
-//         if(debugging_enabled){
-//             Serial.println("No wifi from esp so trying cellular function...");
-//           }
-//         outputToCloud(cloud_output_string);
-//     }else{
-//         if(debugging_enabled){
-//             Serial.println("Sending data to esp to upload via wifi...");
-//             writeLogFile("Sending data to esp to upload via wifi");
-//           }
-//         Serial1.println(cloud_output_string);
-//     }
-//     PAMSerial.println(rd, csv_output_string);
-
-//     //write data to file
-//     if (sd.begin(CS)){
-//         if(debugging_enabled)
-//             Serial.println("Writing row to file.");
-//         file.open(fileName, O_CREAT | O_APPEND | O_WRITE);
-//         if(file_started == 0){
-//             file.println("File Start timestamp: ");
-//             file.println(Time.timeStr());
-//             file.println(String(HEADER_STRING));
-//             file_started = 1;
-//         }
-//         file.println(csv_output_string);
-
-//         file.close();
-//     }
-//     //delay(5000);
-
-//     //Serial.print("Successfully output Cloud string to ESP: ");
-//     //Serial.println(cloud_output_string);
-
-//     //create an array of binary data to store and send all data at once to the ESP
-//     //Each "section" in the array is separated by a #
-//     //we are using binary for the ble packets so we can compress the data into 19 bytes for the small payload
-
-//     byte ble_output_array[NUMBER_OF_SPECIES*BLE_PAYLOAD_SIZE];     //19 bytes per data line and 12 species to output
-
-
-//     for(int i=0; i<NUMBER_OF_SPECIES; i++){
-
-//         //************Fill the ble output array**********************//
-//         //Serial.printf("making array[%d]\n", i);
-//         //byte 0 - version
-//         ble_output_array[0 + i*(BLE_PAYLOAD_SIZE)] = 1;
-
-//         //bytes 1,2 - Device ID
-//         //DEVICE_id = 555;
-//         wordBytes.myWord = DEVICE_id;
-//         ble_output_array[1 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[0];
-//         ble_output_array[2 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[1];
-
-//         //byte 3 - Measurement number
-//         ble_output_array[3 + i*(BLE_PAYLOAD_SIZE)] = sample_counter;
-
-//         //byte 4 - Identifier (B:battery, a:Latitude, o:longitude,
-//         //t:Temperature, P:Pressure, h:humidity, s:Sound, O:Ozone,
-//         //C:CO2, M:CO, r:PM1, R:PM2.5, q:PM10, g:VOCs)
-//         /*
-//         0-CO_float
-//         1-CO2_float
-//         2-bme.gas_resistance / 1000.0
-//         3-PM01Value
-//         4-PM2_5Value
-//         5-PM10Value
-//         6-bme.temperature
-//         7-bme.pressure / 100.0
-//         8-bme.humidity
-//         9-O3_float
-//         10-fuel.getSoC()
-//         11-sound_average
-
-
-
-//         */
-//         if(i == 0){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = CARBON_MONOXIDE_PACKET_CONSTANT;
-//             // floatBytes.myFloat = CO_float;
-//             floatBytes.myFloat = pamco.co.adj_value;
-//         }else if(i == 1){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = CARBON_DIOXIDE_PACKET_CONSTANT;
-//             floatBytes.myFloat = CO2_float;
-//         }else if(i == 2){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = BATTERY_PACKET_CONSTANT;
-//             floatBytes.myFloat = fuel.getSoC();
-//         }else if(i == 3){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM1_PACKET_CONSTANT;
-//             // floatBytes.myFloat = PM01Value;
-//             floatBytes.myFloat = plantower.pm1.adj_value;
-//         }else if(i == 4){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM2PT5_PACKET_CONSTANT;
-//             // floatBytes.myFloat = corrected_PM_25;
-//             floatBytes.myFloat = plantower.pm2_5.adj_value;
-//         }else if(i == 5){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PM10_PACKET_CONSTANT;
-//             // floatBytes.myFloat = PM10Value;
-//             floatBytes.myFloat = plantower.pm10.adj_value;
-//         }else if(i == 6){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = TEMPERATURE_PACKET_CONSTANT;
-//             floatBytes.myFloat = readTemperature();
-//         }else if(i == 7){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = PRESSURE_PACKET_CONSTANT;
-//             // floatBytes.myFloat = bme.pressure / 100.0;
-//             floatBytes.myFloat = tph_fusion.pressure->adj_value;
-//         }else if(i == 8){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = HUMIDITY_PACKET_CONSTANT;
-//             floatBytes.myFloat = readHumidity();
-//         }else if(i == 9){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = SOUND_PACKET_CONSTANT;
-//             floatBytes.myFloat = sound_average;
-//         }else if(i == 10){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = VOC_PACKET_CONSTANT;
-//             floatBytes.myFloat = air_quality_score;
-//         }/*else if(i == 11){
-//             ble_output_array[4 + i*(BLE_PAYLOAD_SIZE)] = OZONE_PACKET_CONSTANT;
-//             floatBytes.myFloat = O3_float;
-//         }*/
-
-//         //bytes 5,6,7,8 - Measurement Value
-//         ble_output_array[5 + i*(BLE_PAYLOAD_SIZE)] = floatBytes.bytes[0];
-//         ble_output_array[6 + i*(BLE_PAYLOAD_SIZE)] = floatBytes.bytes[1];
-//         ble_output_array[7 + i*(BLE_PAYLOAD_SIZE)] = floatBytes.bytes[2];
-//         ble_output_array[8 + i*(BLE_PAYLOAD_SIZE)] = floatBytes.bytes[3];
-
-
-//         //bytes 9-12 - latitude
-//         wordBytes.myWord = gps.get_latitudeWhole();
-//         ble_output_array[9 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[0];
-//         ble_output_array[10 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[1];
-
-//         wordBytes.myWord = gps.get_latitudeFrac();
-//         ble_output_array[11 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[0];
-//         ble_output_array[12 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[1];
-
-//         //bytes 14-17 - longitude
-//         wordBytes.myWord = gps.get_longitudeWhole();
-//         ble_output_array[13 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[0];
-//         ble_output_array[14 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[1];
-
-//         wordBytes.myWord = gps.get_longitudeFrac();
-//         ble_output_array[15 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[0];
-//         ble_output_array[16 + i*(BLE_PAYLOAD_SIZE)] = wordBytes.bytes[1];
-
-
-//         //byte 18 - east west and north south indicator
-//         //  LSB 0 = East, LSB 1 = West
-//         //  MSB 0 = South, MSB 1 = North
-//         int northSouth = gps.get_nsIndicator();
-//         int eastWest = gps.get_ewIndicator();
-
-//         ble_output_array[17 + i*(BLE_PAYLOAD_SIZE)] = northSouth | eastWest;
-//         ble_output_array[18 + i*(BLE_PAYLOAD_SIZE)] = gps.get_horizontalDillution();
-//         ble_output_array[19 + i*(BLE_PAYLOAD_SIZE)] = status_word.byte[1];
-//         ble_output_array[20 + i*(BLE_PAYLOAD_SIZE)] = status_word.byte[0];
-
-//         ble_output_array[21 + i*(BLE_PAYLOAD_SIZE)] = '#';     //delimeter for separating species
-
-//     }
-
-//     //send start delimeter to ESP
-//     Serial1.print("$");
-//     //send the packaged data with # delimeters in between packets
-//     Serial1.write(ble_output_array, NUMBER_OF_SPECIES*BLE_PAYLOAD_SIZE);
-
-//     //send ending delimeter
-//     Serial1.print("&");
-
-//     /*Serial.println("Successfully output BLE string to ESP");
-//     for(int i=0;i<NUMBER_OF_SPECIES*BLE_PAYLOAD_SIZE;i++){
-//         Serial.printf("array[%d]:%X ", i, ble_output_array[i]);
-//         if(ble_output_array[i]=='#')
-//             Serial.printf("\n\r");
-//     }
-//     Serial.println("End of array");*/
-
-// }
 
 //ask the ESP if it has a wifi connection
 void getEspWifiStatus(void){
@@ -2092,13 +1724,16 @@ void serialMenu(){
     Serial.flush();
     while(!Serial.available());
     incomingByte = Serial.read();
-    if(incomingByte == 'a'){
-        serialGetCo2Slope();
-    }else if(incomingByte == 'b'){
+    // if(incomingByte == 'a'){
+    //     serialGetCo2Slope();
+    // }
+    if(incomingByte == 'b'){
         serialGetCo2Zero();
-    }else if(incomingByte == 'c'){
-        serialGetCoSlope();
-    }else if(incomingByte == 'd'){
+    }
+    // else if(incomingByte == 'c'){
+    //     serialGetCoSlope();
+    // }
+    else if(incomingByte == 'd'){
         serialGetCoZero();
     }
     // else if(incomingByte == 'e'){
@@ -2681,95 +2316,95 @@ void serialGetAverageTime(void){
     }
 }
 
-void serialGetCo2Slope(void){
+// void serialGetCo2Slope(void){
 
-    Serial.println();
-    Serial.print("Current CO2 slope:");
-    Serial.print(String(t6713.CO2.slope, 2));
-    Serial.println(" ppm");
-    Serial.print("Enter new CO2 slope\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    float tempfloat = tempString.toFloat();
-    int tempValue;
+//     Serial.println();
+//     Serial.print("Current CO2 slope:");
+//     Serial.print(String(t6713.CO2.slope, 2));
+//     Serial.println(" ppm");
+//     Serial.print("Enter new CO2 slope\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     float tempfloat = tempString.toFloat();
+//     int tempValue;
 
-    if(tempfloat >= 0.5 && tempfloat < 10.0){
-        t6713.CO2.slope = tempfloat;
-        tempfloat *= 100;
-        tempValue = tempfloat;
-        Serial.print("\n\rNew CO2 slope: ");
-        Serial.println(String(t6713.CO2.slope,2));
+//     if(tempfloat >= 0.5 && tempfloat < 10.0){
+//         t6713.CO2.slope = tempfloat;
+//         tempfloat *= 100;
+//         tempValue = tempfloat;
+//         Serial.print("\n\rNew CO2 slope: ");
+//         Serial.println(String(t6713.CO2.slope,2));
 
-        EEPROM.put(CO2_SLOPE_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//         EEPROM.put(CO2_SLOPE_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetCo2Zero(void){
-    Serial.println();
-    Serial.print("Current CO2 zero:");
-    Serial.print(t6713.CO2.zero);
-    Serial.println(" ppm");
-    Serial.print("Enter new CO2 Zero\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    int tempValue = tempString.toInt();
+// void serialGetCo2Zero(void){
+//     Serial.println();
+//     Serial.print("Current CO2 zero:");
+//     Serial.print(t6713.CO2.zero);
+//     Serial.println(" ppm");
+//     Serial.print("Enter new CO2 Zero\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     int tempValue = tempString.toInt();
 
-    if(tempValue >= -1000 && tempValue < 1000){
-        Serial.print("\n\rNew CO2 zero: ");
-        Serial.println(tempValue);
-        t6713.CO2.zero = tempValue;
-        EEPROM.put(CO2_ZERO_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//     if(tempValue >= -1000 && tempValue < 1000){
+//         Serial.print("\n\rNew CO2 zero: ");
+//         Serial.println(tempValue);
+//         t6713.CO2.zero = tempValue;
+//         EEPROM.put(CO2_ZERO_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetCoSlope(void){
+// void serialGetCoSlope(void){
 
-    Serial.println();
-    Serial.print("Current CO slope:");
-    Serial.print(String(pamco.co.slope, 2));
-    Serial.println(" ppm");
-    Serial.print("Enter new CO slope\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    float tempfloat = tempString.toFloat();
-    int tempValue;
+//     Serial.println();
+//     Serial.print("Current CO slope:");
+//     Serial.print(String(pamco_a.co.slope, 2));
+//     Serial.println(" ppm");
+//     Serial.print("Enter new CO slope\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     float tempfloat = tempString.toFloat();
+//     int tempValue;
 
-    if(tempfloat >= 0.1 && tempfloat < 2.0){
-        pamco.co.slope = tempfloat;
-        tempfloat *= 100;
-        tempValue = tempfloat;
-        Serial.print("\n\rNew CO slope: ");
-        Serial.println(String(pamco.co.slope,2));
+//     if(tempfloat >= 0.1 && tempfloat < 2.0){
+//         pamco_a.co.slope = tempfloat;
+//         tempfloat *= 100;
+//         tempValue = tempfloat;
+//         Serial.print("\n\rNew CO slope: ");
+//         Serial.println(String(pamco_a.co.slope,2));
 
-        EEPROM.put(CO_SLOPE_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//         EEPROM.put(CO_SLOPE_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
-void serialGetCoZero(void){
-    Serial.println();
-    Serial.print("Current CO zero:");
-    Serial.print(pamco.co.zero);
-    Serial.println(" ppb");
-    Serial.print("Enter new CO Zero\n\r");
-    Serial.setTimeout(50000);
-    String tempString = Serial.readStringUntil('\r');
-    int tempValue = tempString.toInt();
+// void serialGetCoZero(void){
+//     Serial.println();
+//     Serial.print("Current CO zero:");
+//     Serial.print(pamco_a.co.zero);
+//     Serial.println(" ppb");
+//     Serial.print("Enter new CO Zero\n\r");
+//     Serial.setTimeout(50000);
+//     String tempString = Serial.readStringUntil('\r');
+//     int tempValue = tempString.toInt();
 
-    if(tempValue >= -5000 && tempValue < 5000){
-        Serial.print("\n\rNew CO zero: ");
-        Serial.println(tempValue);
-        pamco.co.zero = tempValue;
-        EEPROM.put(CO_ZERO_MEM_ADDRESS, tempValue);
-    }else{
-        Serial.println("\n\rInvalid value!");
-    }
-}
+//     if(tempValue >= -5000 && tempValue < 5000){
+//         Serial.print("\n\rNew CO zero: ");
+//         Serial.println(tempValue);
+//         pamco_a.co.zero = tempValue;
+//         EEPROM.put(CO_ZERO_MEM_ADDRESS, tempValue);
+//     }else{
+//         Serial.println("\n\rInvalid value!");
+//     }
+// }
 
 // void serialGetPm1Slope(void){
 //     Serial.println();
@@ -3113,10 +2748,210 @@ void serialGetUpperLimit(void){
 void readAlpha1Constantly(void){
     while(!Serial.available()) {
         // CO_float = readCO();
-        float value = pamco.co.adj_value;
+        float value = pamco_a.co.adj_value;
         Serial.printf("CO: %1.3f ppm\n\r", value);
     }
 }
+
+
+void getEspAQSyncData(char incomingByte)
+{
+    String receivedData = "";
+
+    receivedData = serBuf.readString();
+    
+    char buffer[receivedData.length()];
+    receivedData.toCharArray(buffer, receivedData.length());
+    
+    receivedData.replace("\\", "");
+
+    //This removes the newline characted at the end of the string so it is properly formatted.
+    if (receivedData[receivedData.length()-1] == '\r')
+    {
+        receivedData = receivedData.substring(0, receivedData.length()-2);
+    }
+
+    if (incomingByte == 'Y')
+    {
+        sendToDataFile(receivedData);
+        if(Particle.connected())
+        {
+            Particle.publish("AQSync", receivedData, PRIVATE);
+            Particle.process(); //attempt at ensuring the publish is complete before sleeping
+            if (haveOfflineData) 
+            {
+                uploadOfflineData();
+                haveOfflineData = false;
+            }
+        }
+        else 
+        {
+            sendToUploadLater(receivedData);
+            haveOfflineData = true;
+        }
+        
+    }
+    if (incomingByte == 'Q')
+    {
+        int s = receivedData.indexOf(':');
+        String deviceName = receivedData.substring(2, s-1);
+
+        int checkDevice = diagnosticData.indexOf(deviceName);
+
+        if (checkDevice > 0)
+        {
+            String deviceForward = diagnosticData.substring(checkDevice-2, diagnosticData.length());
+            String oldData = diagnosticData.substring(checkDevice-2, deviceForward.indexOf('&'));
+            diagnosticData.replace(oldData, receivedData);
+        }
+        else if (diagnosticData == "")
+        {
+
+            diagnosticData.concat(receivedData);
+            diagnosticData.concat('&');
+        }
+        else 
+        {
+            diagnosticData.concat(receivedData);
+            diagnosticData.concat('&');
+        }
+    }
+}
+
+
+String readSerBufUntilDone()
+{
+    String inputString;
+    incomingByte = 0;
+
+    while(incomingByte != '\r' && incomingByte != '\n')
+    {
+        if (serBuf.available())
+        {
+            incomingByte = serBuf.read();
+            if (incomingByte != '\r' && incomingByte != '\n')
+            {
+                inputString += (char)incomingByte;
+            }
+        }
+    }
+    return inputString;
+}
+
+void sendToDataFile(String receivedData)
+{
+    Serial.println("Writing the data line to the SD Card: ");
+    file.open(String(DEVICE_id) + "_AQSyncData_" + String(Time.year())+ '_' + String(Time.month()) + '_' + String(Time.day()), O_CREAT | O_APPEND | O_WRITE);
+    file.println(receivedData);
+    file.close();
+}
+
+void sendToUploadLater(String receivedData)
+{
+    Serial.println("Writing the data line to the upload for later file: ");
+    file.open("OfflineFile", O_CREAT | O_APPEND | O_WRITE);
+    file.println(receivedData);
+    file.close();
+}
+
+void uploadOfflineData()
+{
+    char line[1000];
+    int n;
+    Serial.println("Sending the offline data up");
+    file.open("OfflineFile", O_READ);
+
+    while ((n = file.fgets(line, sizeof(line))) > 0) 
+    {
+        Particle.publish("AQSync", line, PRIVATE);
+        Particle.process(); //attempt at ensuring the publish is complete before sleeping
+        delay(400);
+    }
+    file.remove();
+    file.close();
+}
+
+void printFileToSerial()
+{
+    Serial.println();
+    Serial.println("Give the number of the file you want: ");
+    Serial.println();
+
+    String fileName = showAndChooseFiles();
+    Serial.println(fileName);
+
+    file.open(fileName, O_READ);
+
+    char line[1000];
+    int n;
+    while ((n = file.fgets(line, sizeof(line))) > 0) 
+    {
+        Serial.println(line);
+    }
+    file1.close();
+}
+
+void deleteFiles()
+{
+    SdFat sd;
+    sd.open("/");
+    Serial.println();
+    Serial.println("Give the number of the file you want to delete: ");
+    Serial.println();
+
+    String fileName = showAndChooseFiles();
+    Serial.println(fileName);
+    //SdFile deleteFile;
+    //deleteFile = fileName;
+    //file.open(String(fileName), O_READ);
+
+    if (!sd.remove(fileName)) {
+        Serial.println("remove failed");
+    }
+
+    //deleteFile.remove();
+    //file.close();
+    Serial.print(String(fileName));
+    Serial.println(" has been deleted");
+}
+
+String showAndChooseFiles()
+{
+    int i = 0;
+    char * listOfFiles = reinterpret_cast<char*>(malloc(sizeof(char) * 100 /* Fname size */ * 100 /* Num entries */));
+    //Make sure the array is clear
+    memset(listOfFiles, 0, sizeof(char) * 10000);
+
+
+    file1.open("/");
+    while (file.openNext(&file1, O_RDONLY)) {
+        bool isSuccess = file.getName( listOfFiles + (i * 100), 86);
+
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.println(listOfFiles + (i * 100));
+         i++;
+        file.close();
+    }
+    if (file1.getError()) {
+        Serial.println("openNext failed");
+        file.close();
+    } else {
+        Serial.println("End of List.");
+        file.close();
+    }
+    int fileLocation = readSerBufUntilDone().toInt();
+    int numbers = 100*fileLocation;
+    String fileName = String(listOfFiles+numbers);
+    free(listOfFiles);
+    return String(fileName);
+}
+
+
+
+
+
+
 void outputSerialMenuOptions(void){
     Serial.println("Command:  Description");
     Serial.println("a:  Adjust CO2 slope");

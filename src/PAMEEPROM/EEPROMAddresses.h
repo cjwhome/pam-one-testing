@@ -2,10 +2,10 @@
 #define __EEPROM_ADDRESSES_H__
 
 #define DEVICE_ID_MEM_ADDRESS                   (0)
-#define CO2_ZERO_MEM_ADDRESS                    (4)
-#define CO2_SLOPE_MEM_ADDRESS                   (8)
-#define CO_ZERO_MEM_ADDRESS                     (12)
-#define CO_SLOPE_MEM_ADDRESS                    (16)
+#define CO_A_ZERO_MEM_ADDRESS                   (4)
+#define CO_A_SLOPE_MEM_ADDRESS                  (8)
+#define CO_B_ZERO_MEM_ADDRESS                   (12)
+#define CO_B_SLOPE_MEM_ADDRESS                  (16)
 #define PM_1_ZERO_MEM_ADDRESS                   (20)
 #define PM_1_SLOPE_MEM_ADDRESS                  (24)
 #define PM_25_ZERO_MEM_ADDRESS                  (28)
