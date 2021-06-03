@@ -273,6 +273,10 @@ void testSerialOnData(uint16_t rd, uint8_t *data, uint8_t length)
     if (length == 1 && *data == 'm') {
         PAMSerial.pushResponder(serial_menu_rd);
     }
+    else 
+    {
+        getEspAQSyncData(incomingByte);
+    }
 }
 
 void testSerialBecomesResponder(uint16_t rd, bool child_returned)
@@ -752,7 +756,6 @@ void locationCallback(float lat, float lon, float accuracy) {
 }
 
 void loop() {
-    Serial.println("this is the start of the loop");
 
     //Serial.println("locator loop");
     locator.loop();
@@ -798,23 +801,23 @@ void loop() {
     //getEspWifiStatus();
     //outputDataToESP();
 
-    if (serBuf.available() > 0)
-    {
-        incomingByte = serBuf.read();
-        Serial.println("We have recieved something from the touch screen. This is the incomingByte: ");
-        Serial.println(incomingByte);
-        if (incomingByte == 'm')
-        {
-            serialMenu();
-        }
-        else 
-        {
-            Serial.println("going into getESPAQSyncDATA");
-            getEspAQSyncData(incomingByte);
-        }
+    // if (serBuf.available() > 0)
+    // {
+    //     incomingByte = serBuf.read();
+    //     Serial.println("We have recieved something from the touch screen. This is the incomingByte: ");
+    //     Serial.println(incomingByte);
+    //     if (incomingByte == 'm')
+    //     {
+    //         serialMenu();
+    //     }
+    //     else 
+    //     {
+    //         Serial.println("going into getESPAQSyncDATA");
+    //         getEspAQSyncData(incomingByte);
+    //     }
 
-    }
-    Serial.println("On the other side of the serBufCheck");
+    // }
+    // Serial.println("On the other side of the serBufCheck");
     
 
     outputCOtoPI();
@@ -883,7 +886,6 @@ void loop() {
         Serial.println("Going to sleep because battery is below 20% charge");
         goToSleepBattery();
     }
-    Serial.println("this is the end of the loop");
 }
 
 void calculateAQI(void){
@@ -2864,14 +2866,14 @@ void getEspAQSyncData(char incomingByte)
 {
     String receivedData = "";
 
-    Serial.println("doing a read string here");
-    if (serBuf.available() > 0)
-    {
-        Serial.println("In in the if statement, what??");
-        receivedData = serBuf.readString();
-    }
-    Serial.println("this is received Data:");
-    Serial.println(receivedData);
+    // Serial.println("doing a read string here");
+    // if (serBuf.available() > 0)
+    // {
+    //     Serial.println("In in the if statement, what??");
+    //     receivedData = serBuf.readString();
+    // }
+    // Serial.println("this is received Data:");
+    // Serial.println(receivedData);
     
     char buffer[receivedData.length()];
     receivedData.toCharArray(buffer, receivedData.length());
