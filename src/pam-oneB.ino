@@ -1,7 +1,7 @@
 
 #include <Adafruit_Sensor.h>
 #include "Adafruit_BME680.h"
-#include "Telaire_T6713.h"
+//#include "Telaire_T6713.h"
 #include "LMP91000.h"
 #include "Serial4/Serial4.h"
 #include "Serial5/Serial5.h"
@@ -754,7 +754,7 @@ void locationCallback(float lat, float lon, float accuracy) {
 }
 
 void loop() {
-
+    Serial.println("this is the start of the loop");
 
     //Serial.println("locator loop");
     locator.loop();
@@ -815,6 +815,7 @@ void loop() {
         }
 
     }
+    
 
     outputCOtoPI();
 
@@ -882,7 +883,7 @@ void loop() {
         Serial.println("Going to sleep because battery is below 20% charge");
         goToSleepBattery();
     }
-
+    Serial.println("this is the end of the loop");
 }
 
 void calculateAQI(void){
@@ -1724,17 +1725,17 @@ void serialMenu(){
     Serial.flush();
     while(!Serial.available());
     incomingByte = Serial.read();
-    // if(incomingByte == 'a'){
-    //     serialGetCo2Slope();
-    // }
-    if(incomingByte == 'b'){
-        serialGetCo2Zero();
+    if(incomingByte == 'a'){
+        serialGetCoSlopeA();
     }
-    // else if(incomingByte == 'c'){
-    //     serialGetCoSlope();
-    // }
+    if(incomingByte == 'b'){
+        serialGetCoZeroA();
+    }
+    else if(incomingByte == 'c'){
+        serialGetCoSlopeB();
+    }
     else if(incomingByte == 'd'){
-        serialGetCoZero();
+        serialGetCoZeroB();
     }
     // else if(incomingByte == 'e'){
     //     serialGetPm1Slope();
@@ -2758,6 +2759,105 @@ void readAlpha1Constantly(void){
         Serial.printf("CO: %1.3f ppm\n\r", value);
     }
 }
+
+void serialGetCoSlopeA(void)
+{
+    Serial.println();
+    Serial.print("Current CO slope:");
+    Serial.print(String(pamco_a.co.slope, 2));
+    Serial.println(" ppm");
+    Serial.print("Enter new CO slope\n\r");
+
+    float tempfloat = readSerBufUntilDone().toFloat();
+
+    if (tempfloat >= 0.1 && tempfloat < 5.0)
+    {
+        pamco_a.co.slope = tempfloat;
+        tempfloat *= 100;
+        tempValue = tempfloat;
+        Serial.print("\n\rNew COA slope: ");
+        Serial.println(String(pamco_a.co.slope, 2));
+
+        EEPROM.put(CO_A_SLOPE_MEM_ADDRESS, tempValue);
+    }
+    else
+    {
+        Serial.println("\n\rInvalid value!");
+    }
+}
+
+void serialGetCoZeroA(void)
+{
+    Serial.println();
+    Serial.print("Current CO_A zero:");
+    Serial.print(pamco_a.co.zero);
+    Serial.println(" ppb");
+    Serial.print("Enter new CO Zero\n\r");
+
+    int tempValue = readSerBufUntilDone().toInt();
+
+    if (tempValue >= -5000 && tempValue < 5000)
+    {
+        Serial.print("\n\rNew CO zero: ");
+        Serial.println(tempValue);
+        pamco_a.co.zero = tempValue;
+        EEPROM.put(CO_A_ZERO_MEM_ADDRESS, tempValue);
+    }
+    else
+    {
+        Serial.println("\n\rInvalid value!");
+    }
+}
+
+void serialGetCoSlopeB(void)
+{
+    Serial.println();
+    Serial.print("Current CO slope:");
+    Serial.print(String(pamco_b.co.slope, 2));
+    Serial.println(" ppm");
+    Serial.print("Enter new CO slope\n\r");
+
+    float tempfloat = readSerBufUntilDone().toFloat();
+
+    if (tempfloat >= 0.1 && tempfloat < 5.0)
+    {
+        pamco_b.co.slope = tempfloat;
+        tempfloat *= 100;
+        tempValue = tempfloat;
+        Serial.print("\n\rNew COB slope: ");
+        Serial.println(String(pamco_b.co.slope, 2));
+
+        EEPROM.put(CO_B_SLOPE_MEM_ADDRESS, tempValue);
+    }
+    else
+    {
+        Serial.println("\n\rInvalid value!");
+    }
+}
+
+void serialGetCoZeroB(void)
+{
+    Serial.println();
+    Serial.print("Current CO_B zero:");
+    Serial.print(pamco_b.co.zero);
+    Serial.println(" ppb");
+    Serial.print("Enter new CO Zero\n\r");
+
+    int tempValue = readSerBufUntilDone().toInt();
+
+    if (tempValue >= -5000 && tempValue < 5000)
+    {
+        Serial.print("\n\rNew COB zero: ");
+        Serial.println(tempValue);
+        pamco_b.co.zero = tempValue;
+        EEPROM.put(CO_B_ZERO_MEM_ADDRESS, tempValue);
+    }
+    else
+    {
+        Serial.println("\n\rInvalid value!");
+    }
+}
+
 
 
 void getEspAQSyncData(char incomingByte)
