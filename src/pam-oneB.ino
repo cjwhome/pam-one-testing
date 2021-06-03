@@ -26,8 +26,7 @@
 #include "Sensors/Plantower/Plantower.h"
 #include "Sensors/PAMCO/PAMCO.h"
 
-// THIS IS SO WE GET A LARGER SERIAL BUFFER
-#include "SerialBufferRK.h"
+
 
 GoogleMapsDeviceLocator locator;
 
@@ -178,6 +177,7 @@ bool tried_cellular_connect = false;
 int battery_threshold_enable;
 int CO_socket = 0;
 int google_location_en = 0;
+int serial4Enabler = B4;
 
 char geolocation_latitude[12] = "111.1111111";
 char geolocation_longitude[13] = "22.22222222";
@@ -194,7 +194,6 @@ int measurement_count = 0;
 double sound_average;
 double measurement_number = 0;
 
-SerialBuffer<4096> serBuf(Serial4); // This is how we setup getting a bigger buffer for Serial4
 bool haveOfflineData = false;
 String diagnosticData = "";
 
@@ -586,6 +585,7 @@ void setup()
     pinMode(BLOWER_EN, OUTPUT);
     pinMode(D4, INPUT);
     pinMode(CO2_EN, OUTPUT);
+    pinMode(serial4Enabler, OUTPUT);
 
     //read all stored variables (calibration parameters)
     // readStoredVars();
@@ -606,17 +606,18 @@ void setup()
         goToSleepBattery();
     }
     //if user presses power button during operation, reset and it will go to low power mode
-    attachInterrupt(D4, System.reset, RISING);
-    if(digitalRead(D4)){
-      goToSleep();
-    }
+    // attachInterrupt(D4, System.reset, RISING);
+    // if(digitalRead(D4)){
+    //   goToSleep();
+    // }
 
-    digitalWrite(POWER_LED_EN, HIGH);
+    // digitalWrite(POWER_LED_EN, HIGH);
     //digitalWrite(PLANTOWER_EN, HIGH);
     digitalWrite(ESP_WROOM_EN, HIGH);
     digitalWrite(BLOWER_EN, HIGH);
     digitalWrite(CO2_EN, HIGH);
     digitalWrite(FIVE_VOLT_EN, HIGH);
+    digitalWrite(serial4Enabler, HIGH);
 
 
 
@@ -630,9 +631,6 @@ void setup()
     Serial5.begin(9600);        //gps is connected to this serial port
     //set the Timeout to 1500ms, longer than the data transmission periodic time of the sensor
     // Serial4.setTimeout(5000);
-
-    // This gives us a bigger buffer for Serial4 for communication with the Serial4
-    serBuf.setup();
 
     // Setup the PMIC manually (resets the BQ24195 charge controller)
     // REG00 Input Source Control Register  (disabled)
@@ -811,10 +809,12 @@ void loop() {
         }
         else 
         {
+            Serial.println("going into getESPAQSyncDATA");
             getEspAQSyncData(incomingByte);
         }
 
     }
+    Serial.println("On the other side of the serBufCheck");
     
 
     outputCOtoPI();
@@ -2864,7 +2864,14 @@ void getEspAQSyncData(char incomingByte)
 {
     String receivedData = "";
 
-    receivedData = serBuf.readString();
+    Serial.println("doing a read string here");
+    if (serBuf.available() > 0)
+    {
+        Serial.println("In in the if statement, what??");
+        receivedData = serBuf.readString();
+    }
+    Serial.println("this is received Data:");
+    Serial.println(receivedData);
     
     char buffer[receivedData.length()];
     receivedData.toCharArray(buffer, receivedData.length());
@@ -2909,12 +2916,6 @@ void getEspAQSyncData(char incomingByte)
             String deviceForward = diagnosticData.substring(checkDevice-2, diagnosticData.length());
             String oldData = diagnosticData.substring(checkDevice-2, deviceForward.indexOf('&'));
             diagnosticData.replace(oldData, receivedData);
-        }
-        else if (diagnosticData == "")
-        {
-
-            diagnosticData.concat(receivedData);
-            diagnosticData.concat('&');
         }
         else 
         {

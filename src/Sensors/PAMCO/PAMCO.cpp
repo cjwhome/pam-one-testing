@@ -54,9 +54,9 @@ bool PAMCO::measure()
     
     float half_vref = this->ads1115->readADC_SingleEnded(3); //half of Vref
     float volt_half_Vref = half_vref * ADS_BIT_MV;
-    if(abs((volt_half_Vref)/1000 - 1.25) > 0.5) {
-        Serial.printf("Halfvolt: %1.2f\n\r", volt_half_Vref/1000);
-    }
+    // if(abs((volt_half_Vref)/1000 - 1.25) > 0.5) {
+    //     Serial.printf("Halfvolt: %1.2f\n\r", volt_half_Vref/1000);
+    // }
 
     if(this->lmp91000.read(LMP91000_STATUS_REG) == 0){
         // Serial.println("Status = 0 from LMP91000 status reg");
@@ -101,7 +101,11 @@ bool PAMCO::measure()
     }
 
     this->co.raw_value = (sensorCurrent / 0.358); //sensitivity .358 nA/ppb - from Alphasense calibration certificate, So .358 uA/ppm
+    Serial.println("About to adjust the c0 measurement: ");
+    Serial.println(this->co.raw_value);
     this->co.adj_value = (this->co.slope * this->co.raw_value) + this->co.zero;
+    Serial.println("After adjustment: ");
+    Serial.println(this->co.adj_value);
 
     digitalWrite(this->enable_pin, HIGH);
     return true;
