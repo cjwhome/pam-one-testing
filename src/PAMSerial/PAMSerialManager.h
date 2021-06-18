@@ -96,7 +96,7 @@ public:
 
     template <typename... Args>
     size_t printf(uint16_t rd, const char* format, Args... args) {
-        if (this->active_responders.size() == 0 || rd == this->active_responders.top()) {
+        if (this->active_responders.size() == 0 || rd == this->active_responders.top() || rd == -1) {
             return this->serial->printf(format, args...);
         } else {
             return 0;

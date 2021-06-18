@@ -25,6 +25,12 @@
 #include "Sensors/TPHFusion/TPHFusion.h"
 #include "Sensors/Plantower/Plantower.h"
 #include "Sensors/PAMCO/PAMCO.h"
+#include "Sensors/AQSync/AQSync.h"
+
+// THIS IS SO WE GET A LARGER SERIAL BUFFER
+#include "SerialBufferRK.h"
+
+//SerialBuffer<4096> serBuf(Serial4); // This is how we setup getting a bigger buffer for Serial4
 
 
 
@@ -122,7 +128,7 @@ SYSTEM_THREAD(ENABLED);
 // PAM Sensors
 //T6713 t6713;
 TPHFusion tph_fusion(0x27, false);
-//Plantower plantower(Serial4);
+AQSync aqsync(Serial4);
 PAMCO pamco_a(ADS1115_1_ADDR, LMP91000_1_EN, CO_A_ZERO_MEM_ADDRESS, CO_A_SLOPE_MEM_ADDRESS);
 PAMCO pamco_b(ADS1115_2_ADDR, LMP91000_2_EN, CO_B_ZERO_MEM_ADDRESS, CO_B_SLOPE_MEM_ADDRESS);
 
@@ -583,7 +589,7 @@ void setup()
     setADCSampleTime(ADC_SampleTime_480Cycles);
     //setup i/o
     pinMode(FIVE_VOLT_EN, OUTPUT);
-    //pinMode(PLANTOWER_EN, OUTPUT);
+    pinMode(AQSYNC_EN, OUTPUT);
     pinMode(POWER_LED_EN, OUTPUT);
     pinMode(ESP_WROOM_EN, OUTPUT);
     pinMode(BLOWER_EN, OUTPUT);
@@ -616,7 +622,7 @@ void setup()
     // }
 
     // digitalWrite(POWER_LED_EN, HIGH);
-    //digitalWrite(PLANTOWER_EN, HIGH);
+    digitalWrite(PLANTOWER_EN, HIGH);
     digitalWrite(ESP_WROOM_EN, HIGH);
     digitalWrite(BLOWER_EN, HIGH);
     digitalWrite(CO2_EN, HIGH);
@@ -709,15 +715,15 @@ void setup()
 
     enableContinuousGPS();
 
-    if(google_location_en){
-        Serial.println("Setting up google maps geolocation.");
-        locator.withSubscribe(locationCallback).withLocatePeriodic(5); //setup google maps geolocation
-    }
+    // if(google_location_en){
+    //     Serial.println("Setting up google maps geolocation.");
+    //     locator.withSubscribe(locationCallback).withLocatePeriodic(5); //setup google maps geolocation
+    // }
 
     PAMSensorManager *manager = PAMSensorManager::GetInstance();
     manager->addSensor(&pamco_b);
     manager->addSensor(&tph_fusion);
-    //manager->addSensor(&plantower);
+    manager->addSensor(&aqsync);
     manager->addSensor(&pamco_a);
     serial_menu.addResponder(PAMSensorManager::GetInstance()->serial_menu_rd, "Sensor Settings");
 
@@ -1359,7 +1365,7 @@ void outputCOtoPI(void)
     //get a current time string
 
     CO_string += "\n\r&";
-    serBuf.print(CO_string);
+    PAMSerial.printf(-1, CO_string);
     //send ending delimeter
     //Serial1.print("&");
 }
