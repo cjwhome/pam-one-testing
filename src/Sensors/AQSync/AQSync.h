@@ -1,7 +1,4 @@
-/**
- * Plantower.h - Created on 04/14/2020
- * Author: David Kopala
- */
+
 
 #ifndef __AQSYNC_H__
 #define __AQSYNC_H__
@@ -34,4 +31,4 @@ private:
     bool verifyPacket(char *packet);
 };
 
-#endif // __PLANTOWER_H__
+#endif
